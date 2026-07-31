@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local Workbench</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d1117'/%3E%3Ctext x='32' y='42' fill='%2358a6ff' font-family='monospace' font-size='28' font-weight='700' text-anchor='middle'%3E%26lt%3B/%26gt%3B%3C/text%3E%3C/svg%3E">
+  <style>
+    :root { --bottom-space: max(72px, env(safe-area-inset-bottom)); --card-gap: 14px; color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { min-width: 320px; margin: 0; padding-bottom: var(--bottom-space); background: #0d1117; color: #dce4ee; }
+    button, input, textarea { border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: inherit; font: inherit; }
+    button { padding: 7px 10px; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: #58a6ff; background: #21262d; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input, textarea { padding: 8px 10px; }
+    header.app-header { min-height: 52px; padding: 10px 16px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #30363d; background: #010409; }
+    h1 { margin: 0; font-size: 15px; white-space: nowrap; }
+    .path-bar { padding: 0 12px 10px; border-bottom: 1px solid #21262d; }
+    .path-form { min-width: 0; display: flex; gap: 7px; }
+    #pathInput { min-width: 0; flex: 1; }
+    .muted { color: #8b949e; font-size: 12px; }
+    main { --left-width: 43%; display: flex; height: calc(100vh - 52px - var(--bottom-space)); padding: var(--card-gap) var(--card-gap) 0; }
+    section { min-width: 0; }
+    .left-pane { --files-height: 52%; flex: 0 0 clamp(calc(20% - 4px), var(--left-width), calc(80% - 4px)); display: flex; flex-direction: column; min-width: calc(20% - 4px); max-width: calc(80% - 4px); min-height: 0; }
+    .files { flex: 0 0 clamp(calc(20% - 4px), var(--files-height), calc(80% - 4px)); display: flex; flex-direction: column; min-height: calc(20% - 4px); max-height: calc(80% - 4px); }
+    .splitter, .vertical-splitter { position: relative; background: transparent; touch-action: none; }
+    .splitter { flex: 0 0 var(--card-gap); cursor: col-resize; }
+    .vertical-splitter { flex: 0 0 var(--card-gap); cursor: row-resize; }
+    .splitter::before, .vertical-splitter::before { content: ''; position: absolute; border-radius: 99px; background: #58a6ff; opacity: 0; transition: opacity .16s; }
+    .splitter::before { inset: 20px calc(50% - 1px); }
+    .vertical-splitter::before { inset: calc(50% - 1px) 20px; }
+    .splitter:hover::before, body.resizing-x .splitter::before, .vertical-splitter:hover::before, body.resizing-y .vertical-splitter::before { opacity: .8; }
+    body.resizing-x, body.resizing-y { user-select: none; }
+    body.resizing-x { cursor: col-resize; }
+    body.resizing-y { cursor: row-resize; }
+    #toast { position: fixed; right: 18px; bottom: calc(var(--bottom-space) + 14px); z-index: 10; padding: 10px 14px; border: 1px solid #238636; border-radius: 6px; background: #12261b; color: #7ee787; opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity .16s, transform .16s; }
+    #toast.visible { opacity: 1; transform: translateY(0); }
+    .actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid #21262d; }
+    .upload-menu { position: relative; }
+    .upload-menu summary { padding: 7px 10px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; cursor: pointer; }
+    .upload-menu summary:hover { border-color: #58a6ff; background: #21262d; }
+    .upload-menu summary::-webkit-details-marker { display: none; }
+    .upload-options { position: absolute; top: calc(100% + 5px); left: 0; z-index: 2; display: grid; gap: 5px; min-width: 100px; padding: 6px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; box-shadow: 0 8px 24px #010409; }
+    #status { margin-left: auto; }
+    .table-wrap { min-height: 0; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 7px 9px; text-align: left; border-bottom: 1px solid #21262d; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; color: #8b949e; background: #161b22; font-weight: 500; }
+    th.checkbox, td.checkbox { width: 30px; padding-right: 0; text-align: center; }
+    td.checkbox input { cursor: pointer; }
+    tr.entry-row:hover { background: #161b22; }
+    .name-cell { width: 100%; white-space: normal; word-break: break-all; }
+    .entry { padding: 0; border: 0; background: transparent; color: #58a6ff; text-align: left; }
+    .entry:hover { background: transparent; text-decoration: underline; }
+    .directory { color: #79c0ff; }
+    .link { color: #d2a8ff; }
+    .size, .modified { color: #8b949e; }
+    .files, .terminal-pane, .workspace { border: 1px solid #30363d; border-radius: 10px; overflow: hidden; background: #0d1117; box-shadow: 0 8px 20px rgb(1 4 9 / 22%); }
+    .workspace { flex: 1 1 0; min-width: calc(20% - 4px); min-height: 0; }
+    .file-pane { height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(120px, 1fr) auto; gap: 0; padding: 12px; }
+    .file-title { min-height: 18px; padding-bottom: 8px; border-bottom: 1px solid #21262d; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-area { position: relative; min-height: 0; padding: 8px 0; }
+    textarea, .preview-image, .unsupported-preview { width: 100%; height: 100%; min-height: 0; }
+    textarea { resize: none; line-height: 1.45; }
+    .preview-image { display: block; object-fit: contain; background: #010409; }
+    .unsupported-preview { display: grid; place-items: center; border: 1px dashed #30363d; border-radius: 6px; color: #8b949e; }
+
+    .terminal-pane { flex: 1 1 0; min-height: calc(20% - 4px); display: grid; grid-template-rows: auto minmax(100px, 1fr) auto; background: #010409; }
+    .terminal-toolbar { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #30363d; }
+    .terminal-controls { display: flex; gap: 7px; }
+    #terminalOutput { min-height: 0; margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #c9d1d9; line-height: 1.45; }
+    .terminal-command { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-top: 1px solid #30363d; background: #0d1117; }
+    #commandInput { min-width: 0; flex: 1; border: 0; outline: none; background: transparent; padding-left: 0; }
+    #commandInput:focus { box-shadow: none; }
+    @media (max-width: 960px) {
+      main { height: auto; min-height: calc(100vh - 52px - var(--bottom-space)); flex-direction: column; gap: var(--card-gap); }
+      .left-pane { flex: 0 0 76vh; width: 100%; min-width: 0; max-width: none; }
+      .splitter { display: none; }
+      .workspace { flex: 0 0 76vh; min-width: 0; }
+    }
+    .file-pane > .actions { padding: 10px 0 0; border-top: 1px solid #21262d; border-bottom: 0; }
+    @media (max-width: 600px) {
+      .modified, .modified-head { display: none; }
+      #status { width: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header"><h1>Local Workbench</h1></header>
+  <main>
+    <div class="left-pane">
+      <section class="files" aria-label="文件浏览器">
+        <div class="actions">
+          <button id="refreshButton">刷新</button>
+          <button id="newFolderButton">新建文件夹</button>
+          <button id="newFileButton">新建文件</button>
+          <details id="uploadMenu" class="upload-menu">
+            <summary>上传</summary>
+            <div class="upload-options"><button id="uploadFileButton" type="button">文件</button><button id="uploadFolderButton" type="button">文件夹</button></div>
+          </details>
+          <button id="deleteButton">删除</button>
+          <input id="uploadFileInput" type="file" multiple hidden>
+          <input id="uploadFolderInput" type="file" webkitdirectory directory multiple hidden>
+          <span id="status" class="muted" aria-live="polite"></span>
+        </div>
+        <div class="path-bar">
+          <form id="pathForm" class="path-form">
+            <input id="pathInput" autocomplete="off" spellcheck="false" placeholder="输入目录路径" aria-label="目录路径">
+            <button type="submit">打开</button>
+          </form>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th class="checkbox"><input id="selectAllCheckbox" type="checkbox" aria-label="全选"></th><th>大小</th><th class="modified-head">修改时间</th><th>名称</th></tr></thead>
+            <tbody id="fileList"></tbody>
+          </table>
+        </div>
+      </section>
+      <div id="verticalSplitter" class="vertical-splitter" role="separator" aria-label="调整左侧上下高度" aria-orientation="horizontal"></div>
+      <section class="terminal-pane" aria-label="终端">
+        <div class="terminal-toolbar"><strong>Terminal</strong><div class="terminal-controls"><button id="clearTerminalButton">清屏</button><button id="stopButton" disabled>停止</button></div></div>
+        <pre id="terminalOutput" aria-live="polite"></pre>
+        <form id="terminalForm" class="terminal-command">
+          <input id="commandInput" autocomplete="off" spellcheck="false" placeholder="输入命令，↑↓ 历史，Ctrl/Cmd+C 停止">
+          <button id="runButton" type="submit">执行</button>
+        </form>
+      </section>
+    </div>
+    <div id="splitter" class="splitter" role="separator" aria-label="调整左右宽度" aria-orientation="vertical"></div>
+    <section class="workspace">
+      <div class="file-pane">
+        <div id="fileTitle" class="file-title">选择文件预览</div>
+        <div class="preview-area">
+          <textarea id="editor" spellcheck="false" placeholder="文本文件内容" readonly></textarea>
+          <img id="imagePreview" class="preview-image" alt="图片预览" hidden>
+          <div id="unsupportedPreview" class="unsupported-preview" hidden>暂不支持预览</div>
+        </div>
+        <div class="actions"><button id="forcePreviewButton" type="button" hidden>强制预览（只读）</button><button id="formatJsonButton" type="button" hidden>格式化 JSON</button><button id="saveButton" disabled>保存</button></div>
+      </div>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+<script>
+  const COMMAND_HISTORY_KEY = 'local-workbench.command-history.v1';
+  const TRANSCRIPT_KEY = 'local-workbench.terminal-transcript.v1';
+  const MAX_COMMAND_HISTORY = 100;
+  const MAX_TRANSCRIPT_CHARS = 120000;
+  const state = {
+    directory: '', home: '', selectedPath: null, selectedType: null, checkedPaths: new Set(), activeController: null,
+    commandHistory: loadStorage(COMMAND_HISTORY_KEY, []), historyIndex: -1, historyDraft: '',
+    transcript: loadStorage(TRANSCRIPT_KEY, ''),
+  };
+  const $ = (selector) => document.querySelector(selector);
+  const fileList = $('#fileList');
+  const editor = $('#editor');
+  const fileTitle = $('#fileTitle');
+  const status = $('#status');
+  const terminalOutput = $('#terminalOutput');
+  const commandInput = $('#commandInput');
+  const runButton = $('#runButton');
+  const stopButton = $('#stopButton');
+  const deleteButton = $('#deleteButton');
+  const pathInput = $('#pathInput');
+  const main = $('main');
+  const leftPane = $('.left-pane');
+  const splitter = $('#splitter');
+  const verticalSplitter = $('#verticalSplitter');
+  const uploadFileInput = $('#uploadFileInput');
+  const uploadFolderInput = $('#uploadFolderInput');
+  const uploadMenu = $('#uploadMenu');
+  const imagePreview = $('#imagePreview');
+  const unsupportedPreview = $('#unsupportedPreview');
+  const saveButton = $('#saveButton');
+  const formatJsonButton = $('#formatJsonButton');
+  const forcePreviewButton = $('#forcePreviewButton');
+  const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif']);
+  const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.markdown', '.json', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.html', '.htm', '.css', '.scss', '.sass', '.less', '.xml', '.yml', '.yaml', '.toml', '.ini', '.conf', '.log', '.csv', '.sql', '.sh', '.zsh', '.bash', '.py', '.java', '.go', '.rs', '.c', '.h', '.cpp', '.hpp', '.vue', '.svelte']);
+  const TEXT_FILENAMES = new Set([
+    '.zshrc', '.zprofile', '.zshenv', '.zlogin',
+    '.bashrc', '.bash_profile', '.bash_logout', '.profile',
+    '.gitconfig', '.gitignore', '.gitattributes', '.gitmodules',
+    '.npmrc', '.nvmrc',
+    '.env', '.env.local', '.env.development', '.env.production', '.env.test', '.env.example',
+    '.editorconfig', '.dockerignore',
+    '.prettierrc', '.eslintrc', '.babelrc', '.stylelintrc',
+  ]);
+  const toast = $('#toast');
+  let toastTimer;
+
+  function loadStorage(key, fallback) {
+    try {
+      const value = localStorage.getItem(key);
+      return value == null ? fallback : JSON.parse(value);
+    } catch { return fallback; }
+  }
+
+  function saveStorage(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* history is optional */ }
+  }
+
+  async function request(url, options) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+    return data;
+  }
+
+  function setStatus(message, isError = false) {
+    status.textContent = message;
+    status.style.color = isError ? '#ff7b72' : '';
+  }
+
+  function showToast(message) {
+    clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.classList.add('visible');
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), 1800);
+  }
+
+  function fileName(filePath) {
+    return (filePath.split(/[\\/]/).pop() || '').toLowerCase();
+  }
+
+  function fileExtension(filePath) {
+    const name = fileName(filePath);
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(dot) : '';
+  }
+
+  function supportsTextPreview(filePath) {
+    return TEXT_EXTENSIONS.has(fileExtension(filePath)) || TEXT_FILENAMES.has(fileName(filePath));
+  }
+
+  function setPreview(type, filePath = '') {
+    const textPreview = type === 'text' || type === 'forced-text';
+    editor.hidden = !textPreview;
+    editor.readOnly = type !== 'text';
+    imagePreview.hidden = type !== 'image';
+    unsupportedPreview.hidden = type !== 'unsupported';
+    saveButton.disabled = type !== 'text';
+    formatJsonButton.hidden = type !== 'text' || fileExtension(filePath || state.selectedPath || '') !== '.json';
+    forcePreviewButton.hidden = type !== 'unsupported' || !state.selectedPath;
+    if (type !== 'image') imagePreview.removeAttribute('src');
+    if (type === 'image') imagePreview.src = `/api/download?path=${encodeURIComponent(filePath)}`;
+  }
+
+  function clearPreview() {
+    state.selectedPath = null;
+    state.selectedType = null;
+    editor.value = '';
+    editor.readOnly = true;
+    fileTitle.textContent = '选择文件预览';
+    setPreview('unsupported');
+    unsupportedPreview.hidden = true;
+  }
+
+  function formatSize(size) {
+    if (size == null) return '-';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+    if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MiB`;
+    return `${(size / 1024 / 1024 / 1024).toFixed(1)} GiB`;
+  }
+
+  function formatTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('sv-SE', {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(date).replace(',', '');
+  }
+
+  function parentPath(value) {
+    if (value === '/') return '/';
+    return value.slice(0, value.lastIndexOf('/')) || '/';
+  }
+
+  function joinPath(directory, name) {
+    return directory === '/' ? `/${name}` : `${directory}/${name}`;
+  }
+
+  function promptPath(directory) {
+    const home = state.home.replace(/\\/g, '/').replace(/\/$/, '');
+    const current = directory.replace(/\\/g, '/');
+    return home && (current === home || current.startsWith(`${home}/`)) ? `~${current.slice(home.length)}` : current;
+  }
+
+  function cdTarget(command, home, currentDirectory) {
+    const match = command.match(/^cd(?:\s+(.+?))?\s*$/);
+    if (!match) return null;
+    let target = (match[1] || home || currentDirectory).trim();
+    if ((target.startsWith('"') && target.endsWith('"')) || (target.startsWith("'") && target.endsWith("'"))) {
+      target = target.slice(1, -1);
+    }
+    if (target === '~') return home || currentDirectory;
+    if (target.startsWith('~/')) return `${home.replace(/\/$/, '')}/${target.slice(2)}`;
+    if (target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target)) return target;
+    return `${currentDirectory.replace(/[\\/]$/, '')}/${target}`;
+  }
+
+  function syncPathLabels() {
+    pathInput.value = state.directory;
+  }
+
+  function updateDeleteButton() {
+    deleteButton.textContent = state.checkedPaths.size ? `删除 (${state.checkedPaths.size})` : '删除';
+  }
+
+  function setChecked(path, checked) {
+    if (checked) state.checkedPaths.add(path);
+    else state.checkedPaths.delete(path);
+    updateDeleteButton();
+  }
+
+  function makeCell(value, className = '') {
+    const cell = document.createElement('td');
+    if (className) cell.className = className;
+    cell.textContent = value;
+    return cell;
+  }
+
+  function checkboxCell(item) {
+    const cell = document.createElement('td');
+    cell.className = 'checkbox';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = state.checkedPaths.has(item.path);
+    checkbox.dataset.path = item.path;
+    checkbox.onclick = (event) => event.stopPropagation();
+    checkbox.onchange = () => setChecked(item.path, checkbox.checked);
+    cell.append(checkbox);
+    return cell;
+  }
+
+  function renderParentRow(directory) {
+    if (directory === '/') return;
+    const row = document.createElement('tr');
+    const checkbox = makeCell('', 'checkbox');
+    const nameCell = document.createElement('td');
+    nameCell.className = 'name-cell';
+    const button = document.createElement('button');
+    button.className = 'entry directory';
+    button.textContent = '../';
+    button.onclick = () => loadDirectory(parentPath(directory));
+    nameCell.append(button);
+    row.append(checkbox, makeCell('-','size'), makeCell('-', 'modified'), nameCell);
+    fileList.append(row);
+  }
+
+  function renderEntry(item) {
+    const row = document.createElement('tr');
+    row.className = 'entry-row';
+    row.onclick = () => { state.selectedPath = item.path; state.selectedType = item.type; };
+    const nameCell = document.createElement('td');
+    nameCell.className = 'name-cell';
+    const button = document.createElement('button');
+    button.className = `entry ${item.type}`;
+    const suffix = item.type === 'directory' ? '/' : item.type === 'link' ? ` → ${item.linkTarget || '?'}` : '';
+    button.textContent = `${item.name}${suffix}`;
+    button.onclick = (event) => {
+      event.stopPropagation();
+      state.selectedPath = item.path;
+      state.selectedType = item.type;
+      if (item.type === 'directory') loadDirectory(item.path);
+      else if (item.type === 'file') openFile(item.path);
+      else setStatus('软链接不可直接打开', true);
+    };
+    nameCell.append(button);
+    row.append(checkboxCell(item), makeCell(formatSize(item.size), 'size'), makeCell(formatTime(item.modifiedAt), 'modified'), nameCell);
+    fileList.append(row);
+  }
+
+  async function loadDirectory(directory = state.directory) {
+    try {
+      const data = await request(`/api/list?path=${encodeURIComponent(directory)}`);
+      state.directory = data.path;
+      state.checkedPaths.clear();
+      $('#selectAllCheckbox').checked = false;
+      fileList.replaceChildren();
+      renderParentRow(data.path);
+      data.items.forEach(renderEntry);
+      syncPathLabels();
+      updateDeleteButton();
+      setStatus(`${data.items.length} 项`);
+      return true;
+    } catch (error) {
+      setStatus(error.message, true);
+      return false;
+    }
+  }
+
+  async function openFile(filePath) {
+    const extension = fileExtension(filePath);
+    state.selectedPath = filePath;
+    fileTitle.textContent = filePath;
+    if (IMAGE_EXTENSIONS.has(extension)) {
+      state.selectedType = 'image';
+      editor.value = '';
+      editor.readOnly = true;
+      setPreview('image', filePath);
+      return setStatus('图片预览');
+    }
+    if (!supportsTextPreview(filePath)) {
+      state.selectedType = 'unsupported';
+      editor.value = '';
+      setPreview('unsupported');
+      return setStatus('暂不支持预览', true);
+    }
+    try {
+      const data = await request(`/api/file?path=${encodeURIComponent(filePath)}`);
+      state.selectedPath = data.path;
+      state.selectedType = 'text';
+      fileTitle.textContent = data.path;
+      editor.value = data.content;
+      setPreview('text', data.path);
+      setStatus('文本已打开');
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function forcePreview() {
+    if (state.selectedType !== 'unsupported' || !state.selectedPath) return;
+    try {
+      const data = await request(`/api/file?path=${encodeURIComponent(state.selectedPath)}`);
+      state.selectedPath = data.path;
+      state.selectedType = 'forced-text';
+      fileTitle.textContent = data.path;
+      editor.value = data.content;
+      setPreview('forced-text', data.path);
+      setStatus('已强制按文本预览（只读）');
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  function formatJsonText(text) {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  }
+
+  function formatJson() {
+    if (state.selectedType !== 'text' || fileExtension(state.selectedPath || '') !== '.json') return;
+    try {
+      editor.value = formatJsonText(editor.value);
+      setStatus('JSON 已格式化');
+    } catch (error) {
+      setStatus(`JSON 格式错误：${error.message}`, true);
+    }
+  }
+
+  async function saveFile() {
+    if (state.selectedType !== 'text' || !state.selectedPath) return setStatus('仅文本文件支持编辑', true);
+    try {
+      await request('/api/file', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: state.selectedPath, content: editor.value }),
+      });
+      setStatus('已保存');
+      showToast('保存成功');
+      await loadDirectory();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function uploadFiles(files, keepFolder) {
+    if (!files.length) return;
+    try {
+      setStatus(`正在上传 ${files.length} 项…`);
+      for (const file of files) {
+        const relative = keepFolder ? file.webkitRelativePath || file.name : file.name;
+        await request(`/api/upload?path=${encodeURIComponent(joinPath(state.directory, relative))}`, {
+          method: 'POST', body: file,
+        });
+      }
+      setStatus(`已上传 ${files.length} 项`);
+      showToast(`上传成功：${files.length} 项`);
+      await loadDirectory();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function uploadSelection(input, keepFolder) {
+    const files = [...input.files];
+    input.value = '';
+    await uploadFiles(files, keepFolder);
+  }
+
+  async function createItem(type) {
+    const name = prompt(type === 'folder' ? '文件夹名称' : '文件名称');
+    if (!name) return;
+    const itemPath = joinPath(state.directory, name);
+    try {
+      if (type === 'folder') {
+        await request('/api/mkdir', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: itemPath }),
+        });
+      } else {
+        await request('/api/file', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: itemPath, content: '' }),
+        });
+      }
+      await loadDirectory();
+      if (type === 'file') await openFile(itemPath);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  async function deleteChecked() {
+    const paths = [...state.checkedPaths].sort((left, right) => right.length - left.length);
+    if (!paths.length) return setStatus('请先勾选文件或文件夹', true);
+    if (!confirm(`确认删除 ${paths.length} 项？目录会递归删除。`)) return;
+    try {
+      for (const path of paths) {
+        await request('/api/delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }),
+        });
+      }
+      if (paths.includes(state.selectedPath)) {
+        clearPreview();
+      }
+      await loadDirectory();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  function terminalWrite(value) {
+    state.transcript = `${state.transcript}${value}`;
+    if (state.transcript.length > MAX_TRANSCRIPT_CHARS) state.transcript = state.transcript.slice(-MAX_TRANSCRIPT_CHARS);
+    terminalOutput.textContent = state.transcript;
+    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    saveStorage(TRANSCRIPT_KEY, state.transcript);
+  }
+
+  function saveCommand(command) {
+    state.commandHistory = state.commandHistory.filter((item) => item !== command);
+    state.commandHistory.push(command);
+    if (state.commandHistory.length > MAX_COMMAND_HISTORY) state.commandHistory.shift();
+    state.historyIndex = -1;
+    saveStorage(COMMAND_HISTORY_KEY, state.commandHistory);
+  }
+
+  function setTerminalRunning(running) {
+    runButton.disabled = running;
+    stopButton.disabled = !running;
+    commandInput.disabled = running;
+  }
+
+  async function runCommand() {
+    const command = commandInput.value.trim();
+    if (!command || state.activeController) return;
+    saveCommand(command);
+    state.historyDraft = '';
+    commandInput.value = '';
+    if (state.transcript) terminalWrite(state.transcript.endsWith('\n') ? '\n' : '\n\n');
+    terminalWrite(`${promptPath(state.directory)} $ ${command}\n`);
+    const targetDirectory = cdTarget(command, state.home, state.directory);
+    if (targetDirectory !== null) {
+      const changed = await loadDirectory(targetDirectory);
+      if (!changed) terminalWrite(`cd: ${targetDirectory}: 无法切换目录\n`);
+      commandInput.focus();
+      return;
+    }
+    const controller = new AbortController();
+    state.activeController = controller;
+    setTerminalRunning(true);
+    try {
+      let response = await fetch('/api/shell/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+        body: JSON.stringify({ command, cwd: state.directory }),
+      });
+      if (response.status === 404) {
+        const result = await request('/api/shell', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, cwd: state.directory }),
+        });
+        terminalWrite(`${result.stdout}${result.stderr}`);
+      } else {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `Request failed: ${response.status}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          terminalWrite(decoder.decode(value, { stream: true }));
+        }
+        terminalWrite(decoder.decode());
+      }
+      if (!state.transcript.endsWith('\n')) terminalWrite('\n');
+    } catch (error) {
+      setStatus(error.name === 'AbortError' ? '命令已停止' : error.message, true);
+    } finally {
+      state.activeController = null;
+      setTerminalRunning(false);
+      await loadDirectory();
+      commandInput.focus();
+    }
+  }
+
+  $('#pathForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    loadDirectory(pathInput.value.trim() || state.directory);
+  });
+  function resizeLeftPane(event) {
+    const bounds = main.getBoundingClientRect();
+    const styles = getComputedStyle(main);
+    const leftPadding = Number.parseFloat(styles.paddingLeft) || 0;
+    const rightPadding = Number.parseFloat(styles.paddingRight) || 0;
+    const availableWidth = bounds.width - splitter.offsetWidth - leftPadding - rightPadding;
+    const width = Math.min(availableWidth * 0.8, Math.max(availableWidth * 0.2, event.clientX - bounds.left - leftPadding));
+    main.style.setProperty('--left-width', `${width}px`);
+  }
+
+  function resizeFilePane(event) {
+    const bounds = leftPane.getBoundingClientRect();
+    const availableHeight = bounds.height - verticalSplitter.offsetHeight;
+    const height = Math.min(availableHeight * 0.8, Math.max(availableHeight * 0.2, event.clientY - bounds.top));
+    leftPane.style.setProperty('--files-height', `${height}px`);
+  }
+
+  function enableResize(handle, resize, className) {
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      document.body.classList.add(className);
+      resize(event);
+    });
+    handle.addEventListener('pointermove', (event) => {
+      if (handle.hasPointerCapture(event.pointerId)) resize(event);
+    });
+    handle.addEventListener('pointerup', (event) => {
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      document.body.classList.remove(className);
+    });
+    handle.addEventListener('pointercancel', () => document.body.classList.remove(className));
+  }
+
+  enableResize(splitter, resizeLeftPane, 'resizing-x');
+  enableResize(verticalSplitter, resizeFilePane, 'resizing-y');
+  $('#refreshButton').onclick = () => loadDirectory();
+  $('#newFolderButton').onclick = () => createItem('folder');
+  $('#newFileButton').onclick = () => createItem('file');
+  $('#uploadFileButton').onclick = () => { uploadMenu.open = false; uploadFileInput.click(); };
+  $('#uploadFolderButton').onclick = () => { uploadMenu.open = false; uploadFolderInput.click(); };
+  uploadFileInput.onchange = () => uploadSelection(uploadFileInput, false);
+  uploadFolderInput.onchange = () => uploadSelection(uploadFolderInput, true);
+  forcePreviewButton.onclick = forcePreview;
+  formatJsonButton.onclick = formatJson;
+  saveButton.onclick = saveFile;
+  deleteButton.onclick = deleteChecked;
+  $('#selectAllCheckbox').onchange = (event) => {
+    fileList.querySelectorAll('input[type="checkbox"][data-path]').forEach((checkbox) => {
+      checkbox.checked = event.target.checked;
+      setChecked(checkbox.dataset.path, checkbox.checked);
+    });
+  };
+  $('#terminalForm').addEventListener('submit', (event) => { event.preventDefault(); runCommand(); });
+  $('#stopButton').onclick = () => state.activeController?.abort();
+  $('#clearTerminalButton').onclick = () => { state.transcript = ''; terminalOutput.textContent = ''; saveStorage(TRANSCRIPT_KEY, ''); };
+  commandInput.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && state.activeController) {
+      event.preventDefault();
+      state.activeController.abort();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      $('#clearTerminalButton').click();
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      if (!state.commandHistory.length) return;
+      event.preventDefault();
+      if (state.historyIndex === -1) {
+        state.historyDraft = commandInput.value;
+        state.historyIndex = state.commandHistory.length - 1;
+      } else {
+        state.historyIndex = Math.max(0, state.historyIndex - 1);
+      }
+      commandInput.value = state.commandHistory[state.historyIndex];
+    }
+    if (event.key === 'ArrowDown' && state.historyIndex !== -1) {
+      event.preventDefault();
+      state.historyIndex += 1;
+      commandInput.value = state.historyIndex >= state.commandHistory.length ? state.historyDraft : state.commandHistory[state.historyIndex];
+      if (state.historyIndex >= state.commandHistory.length) state.historyIndex = -1;
+    }
+  });
+  window.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      saveFile();
+    }
+  });
+
+  terminalOutput.textContent = state.transcript;
+  request('/api/state').then((data) => { state.home = data.home || ''; return loadDirectory(data.root); }).catch((error) => setStatus(error.message, true));
+</script>
+</body>
+</html>
